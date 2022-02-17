@@ -14,7 +14,9 @@
 char g_HatKidModel[] = "models/ahit_smug_dance/hatkid.mdl";
 char g_HatKidMusic[] = "player/hatkid_taunt.wav";
 
-bool g_IsDancing[MAXPLAYERS + 1];
+bool g_IsDancing[MAXPLAYERS + 1] = { false, ... };
+bool g_IsDancing2[MAXPLAYERS + 1] = { false, ... };
+char g_szCustomModel[MAXPLAYERS + 1][64];
 Handle hPlayTaunt;
 
 public Plugin myinfo = 
@@ -48,6 +50,7 @@ public void OnPluginStart()
 	CloseHandle(conf);
 	
 	RegConsoleCmd("sm_smug", cSmug, "SMUG.");
+	//RegConsoleCmd("sm_smug2", cSmug2, "SMUG2.");
 	HookEvent("player_spawn", evPlayerSpawn);
 	HookEvent("player_death", evPlayerSpawn);
   	HookUserMessage(GetUserMessageId("PlayerTauntSoundLoopStart"), HookTauntMessage, true);
@@ -58,11 +61,15 @@ public Action:evPlayerSpawn(Handle:hEvent, const String:szName[], bool:bDontBroa
 {
     new client = GetClientOfUserId(GetEventInt(hEvent, "userid"));
     if (client < 1)return Plugin_Continue;
-    if(g_IsDancing[client]){
-	    RemoveValveHat(client, true);
-	    HideWeapons(client, true);
-	    SetVariantString("");
-	    AcceptEntityInput(client, "SetCustomModel");
+    if(g_IsDancing[client] || g_IsDancing2[client]){
+        RemoveValveHat(client, true);
+        HideWeapons(client, true);
+        //SetVariantString("");
+        if(StrEqual(g_szCustomModel[client], g_HatKidModel)) g_szCustomModel[client][0] = 0;
+        SetVariantString(g_szCustomModel[client]);
+        AcceptEntityInput(client, "SetCustomModel");
+        SetEntProp(client, Prop_Send, "m_bUseClassAnimations", 1);
+        g_IsDancing2[client] = false;
    	}
     return Plugin_Continue;
 }
@@ -118,6 +125,13 @@ public void OnMapStart()
 	AddFileToDownloadsTable("sound/player/hatkid_taunt.wav");
 	
 	PrecacheModel(g_HatKidModel);
+	
+	for(int i = 0; i <= MAXPLAYERS; i++)
+	{
+		g_IsDancing[i] = false;
+		g_IsDancing2[i] = false;
+		g_szCustomModel[i][0] = 0;
+	}
 }
 
 public Action:SHook(clients[64], &numClients, String:sound[PLATFORM_MAX_PATH], &Ent, &channel, &Float:volume, &level, &pitch, &flags) 
@@ -132,6 +146,7 @@ public Action:SHook(clients[64], &numClients, String:sound[PLATFORM_MAX_PATH], &
 }
 
 public Action cSmug(int client, int args){
+	if(g_IsDancing2[client]) return Plugin_Handled;
 	int ent = MakeCEIVEnt(client, TAUNT_RUSSIAN);
 	Address pEconItemView = GetEntityAddress(ent) + view_as<Address>(FindSendPropInfo("CTFWearable", "m_Item"));
 	if (!IsValidAddress(pEconItemView))
@@ -142,9 +157,43 @@ public Action cSmug(int client, int args){
 	bool bSuccess = SDKCall(hPlayTaunt, client, pEconItemView);
 	if(bSuccess)
 	{
+		GetEntPropString(client, Prop_Send, "m_iszCustomModel", g_szCustomModel[client], sizeof(g_szCustomModel[]));
+		//if(StrEqual(g_szCustomModel[client], g_HatKidModel)) g_szCustomModel[client][0] = 0;
 		g_IsDancing[client] = true;
 		SetVariantString(g_HatKidModel);
 		HideWeapons(client);
+		RemoveValveHat(client);
+		AcceptEntityInput(client, "SetCustomModel");
+		SetEntProp(client, Prop_Send, "m_bCustomModelRotates", 1);
+		SetEntProp(client, Prop_Send, "m_bUseClassAnimations", 1);
+		SetEntProp(client, Prop_Send, "m_nBody", 0);
+	}
+	return Plugin_Handled;
+}
+
+public Action cSmug2(int client, int args){
+	if(g_IsDancing[client]) return Plugin_Handled;
+	
+	if(g_IsDancing2[client])
+	{
+		//SetVariantString("");
+		if(StrEqual(g_szCustomModel[client], g_HatKidModel)) g_szCustomModel[client][0] = 0;
+		SetVariantString(g_szCustomModel[client]);
+		AcceptEntityInput(client, "SetCustomModel");
+		SetEntProp(client, Prop_Send, "m_bUseClassAnimations", 1);
+		if(IsPlayerAlive(client))
+		{
+			HideWeapons(client,true);
+			RemoveValveHat(client,true);
+		}
+		g_IsDancing2[client] = false;
+	}
+	else
+	{
+		GetEntPropString(client, Prop_Send, "m_iszCustomModel", g_szCustomModel[client], sizeof(g_szCustomModel[]));
+		//if(StrEqual(g_szCustomModel[client], g_HatKidModel)) g_szCustomModel[client][0] = 0;
+		g_IsDancing2[client] = true;
+		SetVariantString(g_HatKidModel);
 		RemoveValveHat(client);
 		AcceptEntityInput(client, "SetCustomModel");
 		SetEntProp(client, Prop_Send, "m_bCustomModelRotates", 1);
@@ -173,8 +222,11 @@ public void TF2_OnConditionRemoved(int client, TFCond cond)
 	if(cond == TFCond_Taunting && g_IsDancing[client])
 	{
 		g_IsDancing[client] = false;
-		SetVariantString("");
+		//SetVariantString("");
+		if(StrEqual(g_szCustomModel[client], g_HatKidModel)) g_szCustomModel[client][0] = 0;
+		SetVariantString(g_szCustomModel[client]);
 		AcceptEntityInput(client, "SetCustomModel");
+		SetEntProp(client, Prop_Send, "m_bUseClassAnimations", 1);
 		if(IsPlayerAlive(client))
 		{
 			HideWeapons(client,true);
@@ -195,7 +247,7 @@ stock bool IsValidAddress(Address pAddress)
 stock HideWeapons(client, bool:unhide = false)
 {
 	HideWeaponWearables(client, unhide);
-	new m_hMyWeapons = FindSendPropOffs("CTFPlayer", "m_hMyWeapons");	
+	new m_hMyWeapons = FindSendPropInfo("CTFPlayer", "m_hMyWeapons");	
 
 	for (new i = 0, weapon; i < 47; i += 4)
 	{
